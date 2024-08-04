@@ -37,7 +37,7 @@ service := &Service{}
 wrapped := servicev1connect.NewInstrumentedServiceClient(service)
 ```
 
-You can see a sample of the generated code [here](./example/sample_output.go).
+You can see a sample of the generated code [here](./example/sample_output.go), the original connectrpc code [here](./example/api.connect.go), and its corresponding proto definition [here](./example/api.proto).
 
 ## Why?
 
