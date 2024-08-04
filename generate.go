@@ -75,8 +75,6 @@ const methodTemplate = `func (c %[1]s) %[3]s(ctx context.Context, req *connect.R
 	defer span.End()
 
 	if span.IsRecording() {
-		span.SetAttributes(attribute.String("procedure", req.Spec().Procedure))
-
 		input, err := protojson.Marshal(req.Msg)
 		if err == nil {
 			span.SetAttributes(attribute.String("input", string(input)))
