@@ -37,6 +37,8 @@ service := &Service{}
 wrapped := servicev1connect.NewInstrumentedServiceClient(service)
 ```
 
+You can see a sample of the generated code [here](./example/sample_output.go).
+
 ## Why?
 
 You may be wondering why this exists when there is an official solution for opentelemetry with connectrpc in Go the form [otelconnect](https://github.com/connectrpc/otelconnect-go).
