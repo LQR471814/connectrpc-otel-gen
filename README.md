@@ -34,6 +34,15 @@ Usage of the generated code is as follows.
 ```go
 // some value that implements the servicev1connect.ServiceClient interface
 service := &Service{}
+
+// (optional) initialize a separate trace provider instead of the default (and resource)
+// for each service contained within this package
+// this can be useful if you need each service to have a different resource
+servicev1connect.InitTraceProvider(
+   traceExporter,
+   attribute.String("additional_resource_attr", "..."),
+)
+
 wrapped := servicev1connect.NewInstrumentedServiceClient(service)
 ```
 

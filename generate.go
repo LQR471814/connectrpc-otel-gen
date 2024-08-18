@@ -13,8 +13,43 @@ const importsTemplate = `import (
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/sdk/resource"
+	"go.opentelemetry.io/otel/sdk/trace"
+	semconv "go.opentelemetry.io/otel/semconv/v1.17.0"
+	oteltrace "go.opentelemetry.io/otel/trace"
 	"google.golang.org/protobuf/encoding/protojson"
 %s)`
+
+const newTracerAndProviderFunc = `func newTracerAndProvider(serviceName string, exporter trace.SpanExporter, attrs []attribute.KeyValue) (*trace.TracerProvider, oteltrace.Tracer) {
+	r, err := resource.Merge(
+		resource.Default(),
+		resource.NewWithAttributes(
+			semconv.SchemaURL,
+			append([]attribute.KeyValue{semconv.ServiceName(serviceName)}, attrs...)...,
+		),
+	)
+	if err != nil {
+		panic(err)
+	}
+	traceProvider := trace.NewTracerProvider(
+		trace.WithBatcher(exporter),
+		trace.WithResource(r),
+	)
+	return traceProvider, traceProvider.Tracer(serviceName)
+}`
+
+const initTracerProvidersSignature = `// Initializes separate tracer providers for each service.
+// Call ShutdownTracerProviders to call shutdown on all of them.
+func InitTraceProviders(exporter trace.SpanExporter, attrs ...attribute.KeyValue) {`
+
+const shutdownTracerProvidersPrefix = `// Shuts down all tracer providers initialized, it is
+// a no-op if they have not been initialized.
+func ShutdownTraceProviders(ctx context.Context) {
+	if !providersInitialized {
+		return
+	}`
+const shutdownTracerProvidersSuffix = `	providersInitialized = false
+}`
 
 type generateTarget struct {
 	target                 *target
@@ -55,6 +90,37 @@ func generate(file *ast.File, targets []*target) string {
 	}
 	builder.WriteString(")\n\n")
 
+	builder.WriteString("var (\n")
+	for _, t := range generateTargets {
+		builder.WriteString(fmt.Sprintf(
+			"\t%sProvider *trace.TracerProvider\n",
+			t.tracerName,
+		))
+	}
+	builder.WriteString(")\n\n")
+
+	builder.WriteString("var providersInitialized = false\n\n")
+
+	builder.WriteString(newTracerAndProviderFunc + "\n\n")
+	builder.WriteString(initTracerProvidersSignature + "\n")
+	for _, t := range generateTargets {
+		builder.WriteString(fmt.Sprintf(
+			"\t%[1]sProvider, %[1]s = newTracerAndProvider(\"%[2]s\", exporter, attrs)\n",
+			t.tracerName,
+			t.target.fullServiceName,
+		))
+	}
+	builder.WriteString("}\n\n")
+
+	builder.WriteString(shutdownTracerProvidersPrefix + "\n")
+	for _, t := range generateTargets {
+		builder.WriteString(fmt.Sprintf(
+			"\t%sProvider.Shutdown(ctx)\n",
+			t.tracerName,
+		))
+	}
+	builder.WriteString(shutdownTracerProvidersSuffix + "\n\n")
+
 	for _, t := range generateTargets {
 		t.write(&builder)
 	}
@@ -62,11 +128,19 @@ func generate(file *ast.File, targets []*target) string {
 	return builder.String()
 }
 
-const structTemplate = `type %s struct {
-	inner %s
+const structTemplate = `// A wrapper around a value that implements "%[1]s"
+// that adds telemetry.
+type %[1]s struct {
+	inner %[2]s
 }`
 
-const constructorTemplate = `func New%[1]s(inner %[2]s) %[1]s {
+// 1: Instrumented<Service>Client
+// 2: <Service>Client
+// 3: tracer initialization
+// 4: full service name
+const constructorTemplate = `// Creates a wrapper instance for telemetry around a value that implements
+// "%[1]s"
+func New%[1]s(inner %[2]s) %[1]s {
 	return %[1]s{inner: inner}
 }`
 
@@ -110,10 +184,13 @@ func (gen generateTarget) write(out *strings.Builder) {
 		gen.instrumentedClientName,
 		gen.target.clientIntfName,
 	) + "\n\n")
+
 	out.WriteString(fmt.Sprintf(
 		constructorTemplate,
 		gen.instrumentedClientName,
 		gen.target.clientIntfName,
+		"",
+		gen.target.fullServiceName,
 	) + "\n\n")
 
 	for _, method := range gen.target.methods {
