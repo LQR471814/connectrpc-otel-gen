@@ -13,6 +13,7 @@ const importsTemplate = `import (
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/protobuf/encoding/protojson"
 %s)`
 
@@ -27,7 +28,7 @@ func generate(file *ast.File, targets []*target) string {
 	for i, t := range targets {
 		generateTargets[i] = generateTarget{
 			target:                 t,
-			tracerName:             fmt.Sprintf("%sTracer", strings.ToLower(string(t.serviceName[0]))+t.serviceName[1:]),
+			tracerName:             fmt.Sprintf("%sTracer", t.serviceName),
 			instrumentedClientName: fmt.Sprintf("Instrumented%s", t.clientIntfName),
 		}
 	}
@@ -44,11 +45,12 @@ func generate(file *ast.File, targets []*target) string {
 		importsTemplate,
 		additionalImports.String(),
 	))
+	builder.WriteString("\n\n" + tracerLikeIntf + "\n\n")
 
-	builder.WriteString("\n\nvar (\n")
+	builder.WriteString("var (\n")
 	for _, t := range generateTargets {
 		builder.WriteString(fmt.Sprintf(
-			"\t%s = otel.Tracer(\"%s\")\n",
+			"\t%s TracerLike = otel.Tracer(\"%s\")\n",
 			t.tracerName,
 			t.target.fullServiceName,
 		))
@@ -61,6 +63,10 @@ func generate(file *ast.File, targets []*target) string {
 
 	return builder.String()
 }
+
+const tracerLikeIntf = `type TracerLike interface {
+	Start(ctx context.Context, spanName string, opts ...trace.SpanStartOption) (context.Context, trace.Span)
+}`
 
 const structTemplate = `type %s struct {
 	inner %s
