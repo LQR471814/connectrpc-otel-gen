@@ -70,6 +70,7 @@ const tracerLikeIntf = `type TracerLike interface {
 
 const structTemplate = `type %s struct {
 	inner %s
+	WithInputOutput bool
 }`
 
 const constructorTemplate = `func New%[1]s(inner %[2]s) %[1]s {
@@ -80,7 +81,7 @@ const methodTemplate = `func (c %[1]s) %[3]s(ctx context.Context, req *connect.R
 	ctx, span := %[2]s.Start(ctx, "%[3]s")
 	defer span.End()
 
-	if span.IsRecording() {
+	if span.IsRecording() && c.WithInputOutput {
 		input, err := protojson.Marshal(req.Msg)
 		if err == nil {
 			span.SetAttributes(attribute.String("input", string(input)))
@@ -97,7 +98,7 @@ const methodTemplate = `func (c %[1]s) %[3]s(ctx context.Context, req *connect.R
 		return nil, err
 	}
 
-	if span.IsRecording() {
+	if span.IsRecording() && c.WithInputOutput {
 		output, err := protojson.Marshal(res.Msg)
 		if err == nil {
 			span.SetAttributes(attribute.String("output", string(output)))
